@@ -3,103 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestión de Tickets con Calendario</title>
+    <title>Mapa Mental Interactivo de RDBMS</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            color: #1e293b;
+            overflow: hidden; /* Evita scrollbars mientras se posiciona el mapa */
+        }
+        #mind-map-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #mind-map-container {
+            position: relative;
+            width: 90vmin; /* Usa vmin para que se ajuste al lado más pequeño de la pantalla */
+            height: 90vmin;
+        }
+        .node {
+            position: absolute;
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease-in-out;
+            z-index: 10;
+        }
+        #central-idea {
+            width: 160px;
+            height: 160px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #3b82f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #1d4ed8;
+        }
+        .branch-node {
+            width: 180px;
+            min-height: 80px;
+            padding: 1rem;
+            cursor: pointer;
+        }
+        .branch-node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .content-branch {
+            transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out, margin-top 0.5s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            font-size: 0.875rem;
+        }
+        .branch-node.open .content-branch {
+            max-height: 500px;
+            opacity: 1;
+            margin-top: 1rem;
+        }
+        .branch-node .icon {
+            transition: transform 0.3s ease;
+        }
+        .branch-node.open .icon {
+            transform: rotate(45deg);
+        }
+        #line-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+    </style>
 </head>
-<body class="antialiased">
+<body>
+    <div class="text-center absolute top-0 left-0 right-0 p-4 bg-opacity-50 z-20">
+        <h1 class="text-3xl sm:text-4xl font-bold text-slate-800">Mapa Mental: RDBMS</h1>
+        <p class="text-slate-500 mt-2">Haz clic en cada rama para expandir los detalles.</p>
+    </div>
 
-    <div id="app" class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-5xl">
-        
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl sm:text-4xl font-bold text-white flex items-center justify-center gap-3">
-                <i class="ph ph-ticket text-cyan-400"></i>
-                Gestor de Tickets Diarios
-            </h1>
-            <p class="text-gray-400 mt-2">Registra y visualiza tus tickets por fecha.</p>
-            <div id="auth-info" class="mt-4 text-xs text-gray-500">
-                <span id="user-id-display">Conectando...</span>
-            </div>
-        </header>
+    <div id="mind-map-wrapper">
+        <div id="mind-map-container">
+            <svg id="line-container"></svg>
+            <div id="central-idea" class="node">RDBMS</div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-1 space-y-8">
-                <div class="bg-gray-800 p-6 rounded-2xl shadow-lg">
-                    <h2 class="text-xl font-semibold mb-4 text-white">Añadir Nuevo Ticket</h2>
-                    <form id="add-ticket-form" class="space-y-4">
-                        <div>
-                            <label for="ticket-date" class="block text-sm font-medium text-gray-300 mb-2">Fecha del Ticket</label>
-                            <input type="date" id="ticket-date" required class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition">
-                        </div>
-                        <div>
-                            <label for="ticket-id" class="block text-sm font-medium text-gray-300 mb-2">ID o Nombre del Ticket</label>
-                            <input type="text" id="ticket-id" required placeholder="Ej: #12345, Error de login" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition">
-                        </div>
-                        <div>
-                            <label for="ticket-status" class="block text-sm font-medium text-gray-300 mb-2">Ubicación / Estado</label>
-                            <select id="ticket-status" required class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition">
-                                <option value="Desarrollo">Desarrollo</option>
-                                <option value="CEO">En manos del CEO</option>
-                                <option value="Payments Way">Payments Way</option>
-                                <option value="Soporte N1">Soporte N1</option>
-                                <option value="Finalizado">Finalizado</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="ticket-response" class="block text-sm font-medium text-gray-300 mb-2">Respuesta / Comentarios</label>
-                            <textarea id="ticket-response" required rows="3" placeholder="Ej: Se escaló al equipo de desarrollo..." class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"></textarea>
-                        </div>
-                        <div class="text-right pt-2">
-                            <button type="submit" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg transition-transform transform hover:scale-105 flex items-center gap-2 ml-auto">
-                                <i class="ph ph-plus-circle"></i>
-                                Añadir Ticket
-                            </button>
-                        </div>
-                    </form>
+            <div id="node-concepto" class="node branch-node border-t-4 border-blue-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-blue-700">💡 Concepto</h2>
+                    <span class="icon text-2xl font-light">+</span>
                 </div>
-
-                <div class="bg-gray-800 p-6 rounded-2xl shadow-lg">
-                    <div class="flex items-center justify-between mb-4">
-                        <button id="prev-month" class="p-2 rounded-full hover:bg-gray-700 transition"><i class="ph ph-caret-left"></i></button>
-                        <h3 id="month-year" class="text-lg font-semibold text-white"></h3>
-                        <button id="next-month" class="p-2 rounded-full hover:bg-gray-700 transition"><i class="ph ph-caret-right"></i></button>
-                    </div>
-                    <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center">
-                        <div class="text-xs font-bold text-gray-400">D</div>
-                        <div class="text-xs font-bold text-gray-400">L</div>
-                        <div class="text-xs font-bold text-gray-400">M</div>
-                        <div class="text-xs font-bold text-gray-400">M</div>
-                        <div class="text-xs font-bold text-gray-400">J</div>
-                        <div class="text-xs font-bold text-gray-400">V</div>
-                        <div class="text-xs font-bold text-gray-400">S</div>
-                    </div>
+                <div class="content-branch space-y-2 text-slate-600">
+                    <p><strong>Origen:</strong> Edgar F. Codd (1970).</p>
+                    <p><strong>Propósito:</strong> Independencia de datos y estructura lógica.</p>
                 </div>
             </div>
 
-            <div class="lg:col-span-2">
-                 <h2 id="tickets-list-title" class="text-xl font-semibold mb-4 text-white">Tickets</h2>
-                 <div id="tickets-list" class="space-y-4">
-                     <div id="loading-state" class="text-center py-10">
-                         <p class="text-gray-400">Cargando tickets...</p>
-                     </div>
-                 </div>
+            <div id="node-componentes" class="node branch-node border-t-4 border-teal-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-teal-700">🧩 Componentes</h2>
+                    <span class="icon text-2xl font-light">+</span>
+                </div>
+                <div class="content-branch space-y-1 text-slate-600">
+                    <p><strong>Tabla:</strong> Contenedor de datos.</p>
+                    <p><strong>Fila:</strong> Registro único.</p>
+                    <p><strong>Columna:</strong> Atributo o propiedad.</p>
+                    <p><strong>Claves:</strong> Primaria (PK) y Foránea (FK).</p>
+                </div>
+            </div>
+
+            <div id="node-principios" class="node branch-node border-t-4 border-purple-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-purple-700">🔒 Principios</h2>
+                    <span class="icon text-2xl font-light">+</span>
+                </div>
+                <div class="content-branch space-y-1 text-slate-600">
+                    <p><strong>ACID:</strong> Garantiza transacciones.</p>
+                    <p><strong>SQL:</strong> Lenguaje de consulta.</p>
+                    <p><strong>Normalización:</strong> Reduce redundancia.</p>
+                    <p><strong>Esquema Fijo:</strong> Estructura predefinida.</p>
+                </div>
+            </div>
+
+            <div id="node-apropiados" class="node branch-node border-t-4 border-green-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-green-700">✅ Usos Aptos</h2>
+                    <span class="icon text-2xl font-light">+</span>
+                </div>
+                <div class="content-branch space-y-1 text-slate-600">
+                    <p>✔️ Datos Estructurados</p>
+                    <p>✔️ Transacciones (Banca)</p>
+                    <p>✔️ Business Intelligence</p>
+                    <p>✔️ ERP, CRM</p>
+                </div>
+            </div>
+
+            <div id="node-no-apropiados" class="node branch-node border-t-4 border-red-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-red-700">❌ Usos No Aptos</h2>
+                    <span class="icon text-2xl font-light">+</span>
+                </div>
+                <div class="content-branch space-y-1 text-slate-600">
+                    <p>❌ Big Data</p>
+                    <p>❌ Escalabilidad Horizontal</p>
+                    <p>❌ Datos en Grafo (Redes Sociales)</p>
+                </div>
+            </div>
+
+            <div id="node-ejemplos" class="node branch-node border-t-4 border-amber-500">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-lg font-bold text-amber-700">💻 Ejemplos</h2>
+                    <span class="icon text-2xl font-light">+</span>
+                </div>
+                <div class="content-branch space-y-2 text-slate-600">
+                    <p><strong>Comercial:</strong> Oracle, SQL Server.</p>
+                    <p><strong>Open Source:</strong> MySQL, PostgreSQL, SQLite.</p>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50">
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full max-w-lg">
-             <h2 class="text-xl font-semibold mb-4 text-white">Editar Ticket</h2>
-             <form id="edit-ticket-form" class="space-y-4">
-                 <input type="hidden" id="edit-doc-id">
-                 <div>
-                     <label for="edit-ticket-date" class="block text-sm font-medium text-gray-300 mb-2">Fecha del Ticket</label>
-                     <input type="date" id="edit-ticket-date" required class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2">
-                 </div>
-                 <div>
-                     <label for="edit-ticket-id" class="block text-sm font-medium text-gray-300 mb-2">ID o Nombre del Ticket</label>
-                     <input type="text" id="edit-ticket-id" required class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const container = document.getElementById('mind-map-container');
+            const centralIdea = document.getElementById('central-idea');
+            const branches = Array.from(document.querySelectorAll('.branch-node'));
+            const lineContainer = document.getElementById('line-container');
+
+            function positionNodes() {
+                const containerRect = container.getBoundingClientRect();
+                const centerX = containerRect.width / 2;
+                const centerY = containerRect.height / 2;
+                const radius = containerRect.width / 2 * 0.75; // 75% del radio del contenedor
+                const angleStep = (2 * Math.PI) / branches.length;
+
+                // Limpiar líneas existentes
+                lineContainer.innerHTML = '';
+
+                branches.forEach((branch, index) => {
+                    const angle = angleStep * index - (Math.PI / 2); // Empezar desde arriba
+                    
+                    // Calcular la posición del nodo rama
+                    const x = centerX + radius * Math.cos(angle) - (branch.offsetWidth / 2);
+                    const y = centerY + radius * Math.sin(angle) - (branch.offsetHeight / 2);
+                    
+                    branch.style.left = `${x}px`;
+                    branch.style.top = `${y}px`;
+
+                    // Dibujar la línea de conexión
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', centerX);
+                    line.setAttribute('y1', centerY);
+                    line.setAttribute('x2', x + branch.offsetWidth / 2);
+                    line.setAttribute('y2', y + branch.offsetHeight / 2);
+                    line.setAttribute('stroke', '#94a3b8');
+                    line.setAttribute('stroke-width', '2');
+                    lineContainer.appendChild(line);
+                });
+            }
+            
+            // Lógica para expandir/colapsar
+            branches.forEach(branch => {
+                branch.addEventListener('click', function (e) {
+                    // Evitar que el click se propague si se hace sobre un link dentro del contenido
+                    if (e.target.tagName === 'A') return;
+                    
+                    const wasOpen = this.classList.contains('open');
+
+                    // Cerrar todas las demás para evitar solapamientos
+                    branches.forEach(b => b.classList.remove('open'));
+                    
+                    // Abrir la actual si estaba cerrada
+                    if (!wasOpen) {
+                        this.classList.add('open');
+                    }
+                    
+                    // Reposicionar nodos después de un pequeño delay para permitir que la animación de altura comience
+                    setTimeout(positionNodes, 50);
+                });
+            });
+
+            // Posicionar todo al cargar y al redimensionar la ventana
+            positionNodes();
+            window.addEventListener('resize', positionNodes);
+        });
+    </script>
+</body>
+</html>
