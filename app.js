@@ -1,30 +1,7 @@
-// Importaciones de Firebase
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-// --- CONFIGURACIÓN DE FIREBASE ---
-// IMPORTANTE: Reemplaza este objeto con tu propia configuración de Firebase.
-const firebaseConfig = {
-    apiKey: "TU_API_KEY",
-    authDomain: "TU_AUTH_DOMAIN",
-    projectId: "TU_PROJECT_ID",
-    storageBucket: "TU_STORAGE_BUCKET",
-    messagingSenderId: "TU_MESSAGING_SENDER_ID",
-    appId: "TU_APP_ID"
-};
-
-// Este es un identificador único para tu aplicación dentro de la base de datos.
-const appId = 'mi-gestor-de-tickets-v1';
-
-// --- INICIALIZACIÓN DE FIREBASE ---
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+// --- Clave para el Almacenamiento Local ---
+const STORAGE_KEY = 'miGestorTickets';
 
 // --- ESTADO DE LA APLICACIÓN ---
-let userId = null;
-let ticketsCollectionRef = null;
 let allTickets = [];
 let currentDate = new Date();
 let selectedDate = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
@@ -36,28 +13,26 @@ const ticketsListTitle = document.getElementById('tickets-list-title');
 const calendarGrid = document.getElementById('calendar-grid');
 const monthYearEl = document.getElementById('month-year');
 const addTicketForm = document.getElementById('add-ticket-form');
+const userIdDisplay = document.getElementById('user-id-display');
 
-// --- AUTENTICACIÓN ---
-onAuthStateChanged(auth, user => {
-    if (user) {
-        userId = user.uid;
-        document.getElementById('user-id-display').textContent = `Sesión: ${userId.substring(0, 8)}...`;
-        // La ruta de la colección depende del ID de usuario para mantener los datos privados
-        ticketsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tickets`);
-        listenForTickets();
-    } else {
-         document.getElementById('user-id-display').textContent = `Error de conexión. Revisa la configuración de Firebase.`;
-    }
-});
+// --- LÓGICA DE DATOS LOCALES (CACHE) ---
 
-async function authenticate() {
-    try {
-        await signInAnonymously(auth);
-    } catch (error) {
-        console.error("Error de autenticación:", error);
-        document.getElementById('auth-info').textContent = "Error de autenticación. Revisa la configuración de Firebase.";
-    }
-}
+/**
+ * Carga los tickets desde el localStorage del navegador.
+ * @returns {Array} Un array de objetos de ticket.
+ */
+const loadTicketsFromCache = () => {
+    const ticketsJSON = localStorage.getItem(STORAGE_KEY);
+    return ticketsJSON ? JSON.parse(ticketsJSON) : [];
+};
+
+/**
+ * Guarda el array de tickets en el localStorage del navegador.
+ * @param {Array} tickets - El array de tickets a guardar.
+ */
+const saveTicketsToCache = (tickets) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+};
 
 // --- LÓGICA DEL CALENDARIO ---
 const renderCalendar = () => {
@@ -82,7 +57,7 @@ const renderCalendar = () => {
         calendarGrid.appendChild(dayEl);
     }
 
-    const ticketDates = new Set(allTickets.map(t => t.data().date));
+    const ticketDates = new Set(allTickets.map(t => t.date));
 
     for (let i = 1; i <= lastDay; i++) {
         const dayEl = document.createElement('button');
@@ -136,8 +111,8 @@ const renderFilteredTickets = () => {
     ticketsListTitle.textContent = `Tickets para el ${dateObj.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
 
     const filteredTickets = allTickets
-        .filter(ticket => ticket.data().date === selectedDate)
-        .sort((a, b) => (b.data().createdAt?.toDate() || 0) - (a.data().createdAt?.toDate() || 0));
+        .filter(ticket => ticket.date === selectedDate)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     renderTickets(filteredTickets);
 };
@@ -150,20 +125,19 @@ const renderTickets = (tickets) => {
     }
 
     tickets.forEach(ticket => {
-        const ticketData = ticket.data();
         const ticketEl = document.createElement('div');
         ticketEl.className = 'bg-gray-800 p-5 rounded-xl shadow-md ticket-card flex flex-col md:flex-row gap-4';
         ticketEl.setAttribute('data-id', ticket.id);
 
-        const formattedDate = ticketData.createdAt ? ticketData.createdAt.toDate().toLocaleString('es-ES') : 'N/A';
+        const formattedDate = new Date(ticket.createdAt).toLocaleString('es-ES');
 
         ticketEl.innerHTML = `
             <div class="flex-grow">
                 <div class="flex justify-between items-start">
-                     <h3 class="text-lg font-bold text-cyan-400 mb-2">${escapeHTML(ticketData.ticketId)}</h3>
-                     ${getStatusBadge(ticketData.status)}
+                     <h3 class="text-lg font-bold text-cyan-400 mb-2">${escapeHTML(ticket.ticketId)}</h3>
+                     ${getStatusBadge(ticket.status)}
                 </div>
-                <p class="text-gray-300 whitespace-pre-wrap">${escapeHTML(ticketData.response)}</p>
+                <p class="text-gray-300 whitespace-pre-wrap">${escapeHTML(ticket.response)}</p>
                 <p class="text-xs text-gray-500 mt-3">Registrado: ${formattedDate}</p>
             </div>
             <div class="flex flex-row md:flex-col items-center justify-end md:justify-start gap-2 flex-shrink-0">
@@ -177,57 +151,53 @@ const renderTickets = (tickets) => {
 
 const escapeHTML = str => str ? str.replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag)) : '';
 
-// --- LÓGICA DE FIRESTORE ---
-const listenForTickets = () => {
-    if (!ticketsCollectionRef) return;
-    const q = query(ticketsCollectionRef);
-    onSnapshot(q, (querySnapshot) => {
-        allTickets = querySnapshot.docs.map(doc => ({ id: doc.id, data: () => doc.data() }));
-        loadingState.classList.add('hidden');
-        renderCalendar();
-        renderFilteredTickets();
-    }, (error) => {
-        console.error("Error al obtener tickets:", error);
-        ticketsListEl.innerHTML = `<div class="text-center py-10"><p class="text-red-400">Error al cargar los tickets.</p></div>`;
-    });
+// --- LÓGICA DE MANEJO DE DATOS ---
+
+const refreshUI = () => {
+    allTickets = loadTicketsFromCache();
+    loadingState.classList.add('hidden');
+    renderCalendar();
+    renderFilteredTickets();
 };
 
-addTicketForm.addEventListener('submit', async (e) => {
+addTicketForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (!ticketsCollectionRef) return;
-    try {
-        await addDoc(ticketsCollectionRef, {
-            date: document.getElementById('ticket-date').value,
-            ticketId: document.getElementById('ticket-id').value,
-            status: document.getElementById('ticket-status').value,
-            response: document.getElementById('ticket-response').value,
-            createdAt: serverTimestamp()
-        });
-        addTicketForm.reset();
-        document.getElementById('ticket-date').value = selectedDate;
-    } catch (error) {
-        console.error("Error al añadir el ticket: ", error);
-    }
+    
+    const newTicket = {
+        // Creamos un ID único basado en la fecha actual en milisegundos
+        id: Date.now().toString(), 
+        date: document.getElementById('ticket-date').value,
+        ticketId: document.getElementById('ticket-id').value,
+        status: document.getElementById('ticket-status').value,
+        response: document.getElementById('ticket-response').value,
+        // Usamos una fecha estándar ISO en lugar de un objeto de Firebase
+        createdAt: new Date().toISOString()
+    };
+    
+    allTickets.push(newTicket);
+    saveTicketsToCache(allTickets);
+    
+    addTicketForm.reset();
+    document.getElementById('ticket-date').value = selectedDate;
+    refreshUI();
 });
 
-ticketsListEl.addEventListener('click', async (e) => {
+ticketsListEl.addEventListener('click', (e) => {
     const target = e.target.closest('button');
     if (!target) return;
 
     const ticketEl = target.closest('.ticket-card');
-    const docId = ticketEl.getAttribute('data-id');
-    const ticket = allTickets.find(t => t.id === docId);
+    const ticketId = ticketEl.getAttribute('data-id');
+    const ticketData = allTickets.find(t => t.id === ticketId);
 
     if (target.classList.contains('delete-btn')) {
-        if (window.confirm('¿Estás seguro de que quieres eliminar este ticket?')) {
-            try {
-                await deleteDoc(doc(db, ticketsCollectionRef.path, docId));
-            } catch (error) {
-                console.error("Error al eliminar el ticket: ", error);
-            }
+        if (confirm('¿Estás seguro de que quieres eliminar este ticket?')) {
+            allTickets = allTickets.filter(t => t.id !== ticketId);
+            saveTicketsToCache(allTickets);
+            refreshUI();
         }
     } else if (target.classList.contains('edit-btn')) {
-        openEditModal(docId, ticket.data());
+        openEditModal(ticketId, ticketData);
     }
 });
 
@@ -236,8 +206,8 @@ const editModal = document.getElementById('edit-modal');
 const editForm = document.getElementById('edit-ticket-form');
 const cancelEditBtn = document.getElementById('cancel-edit');
 
-const openEditModal = (docId, data) => {
-    editForm.elements['edit-doc-id'].value = docId;
+const openEditModal = (ticketId, data) => {
+    editForm.elements['edit-doc-id'].value = ticketId;
     editForm.elements['edit-ticket-date'].value = data.date;
     editForm.elements['edit-ticket-id'].value = data.ticketId;
     editForm.elements['edit-ticket-status'].value = data.status;
@@ -248,23 +218,30 @@ const openEditModal = (docId, data) => {
 const closeEditModal = () => editModal.classList.add('hidden');
 cancelEditBtn.addEventListener('click', closeEditModal);
 
-editForm.addEventListener('submit', async (e) => {
+editForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const docId = editForm.elements['edit-doc-id'].value;
-    const docRef = doc(db, ticketsCollectionRef.path, docId);
-    try {
-        await updateDoc(docRef, {
+    const ticketId = editForm.elements['edit-doc-id'].value;
+    
+    const ticketIndex = allTickets.findIndex(t => t.id === ticketId);
+    if (ticketIndex > -1) {
+        allTickets[ticketIndex] = {
+            ...allTickets[ticketIndex], // Mantiene el id y createdAt original
             date: editForm.elements['edit-ticket-date'].value,
             ticketId: editForm.elements['edit-ticket-id'].value,
             status: editForm.elements['edit-ticket-status'].value,
             response: editForm.elements['edit-ticket-response'].value,
-        });
+        };
+        saveTicketsToCache(allTickets);
         closeEditModal();
-    } catch (error) {
-        console.error("Error al actualizar el ticket:", error);
+        refreshUI();
     }
 });
 
-// --- INICIALIZACIÓN ---
-document.getElementById('ticket-date').value = selectedDate;
-authenticate();
+// --- INICIALIZACIÓN DE LA APP ---
+const initializeApp = () => {
+    userIdDisplay.textContent = 'Modo Local (sin conexión)';
+    document.getElementById('ticket-date').value = selectedDate;
+    refreshUI();
+};
+
+initializeApp();
